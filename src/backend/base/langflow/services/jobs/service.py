@@ -10,6 +10,8 @@ if TYPE_CHECKING:
 from datetime import datetime, timezone
 from uuid import UUID
 
+from sqlmodel import col, func, select
+
 from langflow.services.base import Service
 from langflow.services.database.models.jobs.crud import (
     get_job_by_job_id,
@@ -19,6 +21,7 @@ from langflow.services.database.models.jobs.crud import (
 )
 from langflow.services.database.models.jobs.model import Job, JobStatus, JobType
 from langflow.services.deps import session_scope
+from langflow.services.jobs.exceptions import DuplicateJobError
 
 
 class JobService(Service):
@@ -69,6 +72,7 @@ class JobService(Service):
         job_type: JobType = JobType.WORKFLOW,
         asset_id: UUID | None = None,
         asset_type: str | None = None,
+        dedupe_key: str | None = None,
     ) -> Job:
         """Create a new job record with QUEUED status.
 
@@ -78,6 +82,7 @@ class JobService(Service):
             job_type: The job type
             asset_id: The asset ID
             asset_type: The asset type
+            dedupe_key: Optional idempotency key to prevent duplicate jobs for the same batch
 
         Returns:
             Created Job object
@@ -89,6 +94,18 @@ class JobService(Service):
             flow_id = UUID(flow_id)
 
         async with session_scope() as session:
+            if dedupe_key is not None:
+                stmt = (
+                    select(func.count())
+                    .select_from(Job)
+                    .where(Job.dedupe_key == dedupe_key)
+                    .where(col(Job.status).in_([JobStatus.QUEUED, JobStatus.IN_PROGRESS, JobStatus.COMPLETED]))
+                )
+                result = await session.exec(stmt)
+                if result.one() > 0:
+                    msg = f"A non-retryable job with dedupe_key={dedupe_key!r} already exists"
+                    raise DuplicateJobError(msg)
+
             job = Job(
                 job_id=job_id,
                 flow_id=flow_id,
@@ -96,6 +113,7 @@ class JobService(Service):
                 type=job_type,
                 asset_id=asset_id,
                 asset_type=asset_type,
+                dedupe_key=dedupe_key,
             )
             session.add(job)
             await session.flush()
