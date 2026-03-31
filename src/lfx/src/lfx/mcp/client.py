@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from typing import TYPE_CHECKING, Any
 
 import httpx
 from starlette.status import HTTP_204_NO_CONTENT
 
-from lfx.log.logger import logger
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -108,6 +109,7 @@ class LangflowClient:
                 try:
                     yield json.loads(line)
                 except json.JSONDecodeError:
+                    logger.debug("stream_post: skipping non-JSON SSE line: %s", line[:200])
                     continue
 
     async def patch(self, path: str, json_data: Any = None, **kwargs: Any) -> Any:
