@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Live integration test for Memory Base + Knowledge Base user journeys.
+"""Live integration test for Memory Base + Knowledge Base user journeys.
 
 Spec: MemoryBaseTestingSpec.md
 Runs against the live Langflow server at http://localhost:7860
@@ -11,7 +10,6 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import sys
 import time
 import uuid
@@ -254,14 +252,10 @@ class Client:
         return self.session.get(f"{self.base}{path}", headers=self._headers(), timeout=15, **kwargs)
 
     def post(self, path: str, body: Any = None, **kwargs) -> requests.Response:
-        return self.session.post(
-            f"{self.base}{path}", json=body, headers=self._headers(), timeout=15, **kwargs
-        )
+        return self.session.post(f"{self.base}{path}", json=body, headers=self._headers(), timeout=15, **kwargs)
 
     def patch(self, path: str, body: Any = None, **kwargs) -> requests.Response:
-        return self.session.patch(
-            f"{self.base}{path}", json=body, headers=self._headers(), timeout=15, **kwargs
-        )
+        return self.session.patch(f"{self.base}{path}", json=body, headers=self._headers(), timeout=15, **kwargs)
 
     def delete(self, path: str, **kwargs) -> requests.Response:
         return self.session.delete(f"{self.base}{path}", headers=self._headers(), timeout=15, **kwargs)
@@ -293,7 +287,7 @@ def get_or_create_flow(client: Client) -> dict | None:
     if resp.status_code == 200:
         flows = resp.json()
         if isinstance(flows, list) and flows:
-            name = flows[0]['name']
+            name = flows[0]["name"]
             info(f"Using existing flow: {flows[0]['id']} – '{name}'")
             return flows[0]
 
@@ -360,8 +354,7 @@ def get_messages(client: Client, session_id: str | None = None, flow_id: str | N
 
 
 def inject_messages_directly(client: Client, flow_id: str, session_id: str, count: int) -> int:
-    """
-    Fallback: inject messages via the run endpoint.
+    """Fallback: inject messages via the run endpoint.
     Returns the number of output messages that appeared in the monitor.
     """
     before = len([m for m in get_messages(client, session_id=session_id) if m.get("is_output")])
@@ -408,13 +401,13 @@ def scenario_create(client: Client, flow: dict, kb_name: str, user_id: str) -> d
     if resp_no_uid.status_code == 422:
         fail(
             r,
-            f"POST /memories without user_id → 422: MemoryBaseCreate.user_id is a REQUIRED body "
-            f"field, but the endpoint should derive it from the auth token. "
-            f"Bug: user_id should not be required in the request body.",
+            "POST /memories without user_id → 422: MemoryBaseCreate.user_id is a REQUIRED body "
+            "field, but the endpoint should derive it from the auth token. "
+            "Bug: user_id should not be required in the request body.",
         )
     elif resp_no_uid.status_code == 201:
         mb = resp_no_uid.json()
-        ok(r, f"POST /memories without user_id → 201 (endpoint correctly uses auth token)")
+        ok(r, "POST /memories without user_id → 201 (endpoint correctly uses auth token)")
         ok(r, f"  Created id={mb['id']}, flow_id={mb['flow_id']}, threshold={mb['threshold']}")
         r.passed = True
         return mb
@@ -427,14 +420,14 @@ def scenario_create(client: Client, flow: dict, kb_name: str, user_id: str) -> d
     if resp_with_uid.status_code == 500:
         fail(
             r,
-            f"POST /memories WITH user_id → 500: service does "
-            f"MemoryBase(**payload.model_dump(), user_id=user_id) which raises "
-            f"'got multiple values for keyword argument user_id'. "
-            f"Fix: use payload.model_dump(exclude={{\"user_id\"}}) in service.create().",
+            "POST /memories WITH user_id → 500: service does "
+            "MemoryBase(**payload.model_dump(), user_id=user_id) which raises "
+            "'got multiple values for keyword argument user_id'. "
+            'Fix: use payload.model_dump(exclude={"user_id"}) in service.create().',
         )
     elif resp_with_uid.status_code == 201:
         mb = resp_with_uid.json()
-        ok(r, f"POST /memories with user_id → 201")
+        ok(r, "POST /memories with user_id → 201")
         ok(r, f"  Created id={mb['id']}, flow_id={mb['flow_id']}, threshold={mb['threshold']}")
         r.passed = True
         return mb
@@ -659,7 +652,7 @@ def scenario_auto_capture_off(client: Client, flow: dict, kb_name: str, user_id:
         sessions = resp_sessions.json()
         total_processed_sum = sum(s.get("total_processed", 0) for s in sessions)
         if total_processed_sum == 0:
-            ok(r, f"total_processed=0 across all sessions – no ingestion ran (as expected)")
+            ok(r, "total_processed=0 across all sessions – no ingestion ran (as expected)")
             r.passed = True
         else:
             fail(
@@ -733,7 +726,9 @@ def scenario_manual_flush(client: Client, flow: dict, mb: dict) -> None:
                     r.passed = True
                 elif status == "failed":
                     fail(r, f"Job {job_id} FAILED: {job.get('error', 'no error detail')}")
-                    r.add("[NOTE] Ingestion failed – likely because KB embedding requires a real API key (Fake provider)")
+                    r.add(
+                        "[NOTE] Ingestion failed – likely because KB embedding requires a real API key (Fake provider)"
+                    )
                 else:
                     fail(r, f"Job reached status: {status}")
             else:

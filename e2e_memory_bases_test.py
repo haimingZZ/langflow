@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Comprehensive E2E integration test for Memory Base endpoints.
+"""Comprehensive E2E integration test for Memory Base endpoints.
 
 Tests all memory base CRUD operations, ingestion triggers (manual flush and
 threshold-based auto-trigger), and verifies job creation via the KB endpoint.
@@ -26,21 +25,21 @@ import requests
 # Config
 # ---------------------------------------------------------------------------
 
-BASE_URL       = "http://localhost:7860"
-USERNAME       = "langflow"
-PASSWORD       = "langflow"
-TARGET_FLOW_ID        = "7b273a01-3e2b-4d7f-a5d5-c16acd9e74a9"
+BASE_URL = "http://localhost:7860"
+USERNAME = "langflow"
+PASSWORD = "langflow"
+TARGET_FLOW_ID = "7b273a01-3e2b-4d7f-a5d5-c16acd9e74a9"
 # Component ID of the ChatInput node in TARGET_FLOW_ID (used for V2 workflow payload keys)
-CHAT_INPUT_COMPONENT  = "ChatInput-pmDeG"
+CHAT_INPUT_COMPONENT = "ChatInput-pmDeG"
 
 # Threshold set to 1 so a single flow run triggers auto-capture
-THRESHOLD      = 1
+THRESHOLD = 1
 
 # Seconds to wait after a flow run before checking sessions / KB status
-HOOK_SETTLE    = 4
+HOOK_SETTLE = 4
 
 # Seconds to wait for an ingestion job to appear in KB listing
-JOB_POLL_TIMEOUT  = 40
+JOB_POLL_TIMEOUT = 40
 JOB_POLL_INTERVAL = 3
 
 # ---------------------------------------------------------------------------
@@ -99,7 +98,7 @@ def record(
 
 class Client:
     def __init__(self, base: str) -> None:
-        self.base    = base
+        self.base = base
         self.session = requests.Session()
         self.token: str | None = None
         self.api_key: str | None = None
@@ -162,6 +161,7 @@ class Client:
 # ---------------------------------------------------------------------------
 # Section helpers
 # ---------------------------------------------------------------------------
+
 
 def section(title: str) -> None:
     print(f"\n{'=' * 70}")
@@ -268,8 +268,8 @@ def run_build_flow(client: Client, flow_id: str, session_id: str, message: str =
     payload = {
         "inputs": {
             "input_value": message,
-            "session":     session_id,   # InputValueRequest uses 'session' not 'session_id'
-            "type":        "chat",
+            "session": session_id,  # InputValueRequest uses 'session' not 'session_id'
+            "type": "chat",
         },
     }
     resp = client.post(f"/api/v1/build/{flow_id}/flow", body=payload)
@@ -309,14 +309,14 @@ def run_simplified_run_flow(client: Client, flow_id: str, session_id: str, messa
     """Run a flow via POST /api/v1/run/{flow_id} (API key auth)."""
     payload = {
         "input_value": message,
-        "session_id":  session_id,
-        "input_type":  "chat",
+        "session_id": session_id,
+        "input_type": "chat",
         "output_type": "chat",
     }
     resp = client.post(f"/api/v1/run/{flow_id}", body=payload, use_api_key=True)
     return {
         "status": resp.status_code,
-        "body":   safe_json(resp),
+        "body": safe_json(resp),
     }
 
 
@@ -339,14 +339,14 @@ def run_workflow_v2(
         "flow_id": flow_id,
         "inputs": {
             f"{chat_input_component_id}.input_value": message,
-            f"{chat_input_component_id}.session_id":  session_id,
+            f"{chat_input_component_id}.session_id": session_id,
         },
         "background": False,
     }
     resp = client.post("/api/v2/workflows", body=payload, use_api_key=True)
     return {
         "status": resp.status_code,
-        "body":   safe_json(resp),
+        "body": safe_json(resp),
     }
 
 
@@ -369,9 +369,12 @@ def test_auth(client: Client) -> bool:
     passed = resp.status_code == 200 and "access_token" in (body if isinstance(body, dict) else {})
     record(
         "0a – Login (POST /api/v1/login)",
-        "POST", "/api/v1/login",
+        "POST",
+        "/api/v1/login",
         {"username": USERNAME, "password": "***"},
-        resp.status_code, body, passed,
+        resp.status_code,
+        body,
+        passed,
         notes=["Token acquired"] if passed else [f"Login failed: {body}"],
     )
     if not passed:
@@ -384,8 +387,12 @@ def test_auth(client: Client) -> bool:
     passed = resp.status_code == 200
     record(
         "0b – Whoami (GET /api/v1/users/whoami)",
-        "GET", "/api/v1/users/whoami",
-        None, resp.status_code, body, passed,
+        "GET",
+        "/api/v1/users/whoami",
+        None,
+        resp.status_code,
+        body,
+        passed,
     )
     if not passed:
         info("Cannot determine user ID – aborting auth section")
@@ -409,12 +416,17 @@ def test_auth(client: Client) -> bool:
         body={"name": f"e2e-test-{uuid.uuid4().hex[:6]}"},
     )
     create_body = safe_json(create_resp)
-    api_key_passed = create_resp.status_code == 200 and "api_key" in (create_body if isinstance(create_body, dict) else {})
+    api_key_passed = create_resp.status_code == 200 and "api_key" in (
+        create_body if isinstance(create_body, dict) else {}
+    )
     record(
         "0c – Create API Key (POST /api/v1/api_key/)",
-        "POST", "/api/v1/api_key/",
+        "POST",
+        "/api/v1/api_key/",
         {"name": "e2e-test-xxx"},
-        create_resp.status_code, create_body, api_key_passed,
+        create_resp.status_code,
+        create_body,
+        api_key_passed,
         notes=["API key for run/workflow endpoints"] if api_key_passed else ["API key creation failed"],
     )
     if api_key_passed:
@@ -437,12 +449,13 @@ def test_flow_exists(client: Client) -> bool:
     passed = resp.status_code == 200
     record(
         f"1 – Get flow (GET /api/v1/flows/{TARGET_FLOW_ID})",
-        "GET", f"/api/v1/flows/{TARGET_FLOW_ID}",
-        None, resp.status_code, body, passed,
-        notes=[
-            f"Flow name: {body.get('name')}, component: {CHAT_INPUT_COMPONENT}"
-            if passed else "Flow NOT FOUND"
-        ],
+        "GET",
+        f"/api/v1/flows/{TARGET_FLOW_ID}",
+        None,
+        resp.status_code,
+        body,
+        passed,
+        notes=[f"Flow name: {body.get('name')}, component: {CHAT_INPUT_COMPONENT}" if passed else "Flow NOT FOUND"],
     )
     return passed
 
@@ -456,12 +469,12 @@ def test_memory_base_crud(client: Client, flow_id: str) -> dict | None:
     section("SECTION 2 – Memory Base CRUD")
 
     # 2a: Create
-    mb_name   = f"e2e-mb-{uuid.uuid4().hex[:6]}"
+    mb_name = f"e2e-mb-{uuid.uuid4().hex[:6]}"
     create_payload = {
-        "name":            mb_name,
-        "flow_id":         flow_id,
-        "threshold":       THRESHOLD,
-        "auto_capture":    True,
+        "name": mb_name,
+        "flow_id": flow_id,
+        "threshold": THRESHOLD,
+        "auto_capture": True,
         "embedding_model": "text-embedding-3-small",
     }
     resp = client.post("/api/v1/memories", body=create_payload)
@@ -469,18 +482,19 @@ def test_memory_base_crud(client: Client, flow_id: str) -> dict | None:
     passed = resp.status_code == 201
     record(
         "2a – Create Memory Base (POST /api/v1/memories)",
-        "POST", "/api/v1/memories",
-        create_payload, resp.status_code, body, passed,
-        notes=[
-            f"id={body.get('id')}, kb_name={body.get('kb_name')}" if passed
-            else f"Create failed: {body}"
-        ],
+        "POST",
+        "/api/v1/memories",
+        create_payload,
+        resp.status_code,
+        body,
+        passed,
+        notes=[f"id={body.get('id')}, kb_name={body.get('kb_name')}" if passed else f"Create failed: {body}"],
     )
     if not passed:
         return None
 
     mb = body
-    mb_id  = mb["id"]
+    mb_id = mb["id"]
     kb_name = mb["kb_name"]
     info(f"Memory base created: id={mb_id}, kb_name={kb_name}")
 
@@ -495,17 +509,23 @@ def test_memory_base_crud(client: Client, flow_id: str) -> dict | None:
         list_passed = found
         record(
             "2b – List Memory Bases (GET /api/v1/memories)",
-            "GET", "/api/v1/memories",
-            None, resp.status_code, body_list, found,
-            notes=[
-                f"Found {len(items)} memory bases; our MB {'present' if found else 'NOT FOUND'} in list"
-            ],
+            "GET",
+            "/api/v1/memories",
+            None,
+            resp.status_code,
+            body_list,
+            found,
+            notes=[f"Found {len(items)} memory bases; our MB {'present' if found else 'NOT FOUND'} in list"],
         )
     else:
         record(
             "2b – List Memory Bases (GET /api/v1/memories)",
-            "GET", "/api/v1/memories",
-            None, resp.status_code, body_list, resp.status_code == 200,
+            "GET",
+            "/api/v1/memories",
+            None,
+            resp.status_code,
+            body_list,
+            resp.status_code == 200,
             notes=[f"Response structure: {type(body_list).__name__}"],
         )
 
@@ -516,12 +536,17 @@ def test_memory_base_crud(client: Client, flow_id: str) -> dict | None:
     id_match = str(body_get.get("id", "")) == str(mb_id) if get_passed and isinstance(body_get, dict) else False
     record(
         f"2c – Get Memory Base (GET /api/v1/memories/{mb_id})",
-        "GET", f"/api/v1/memories/{mb_id}",
-        None, resp.status_code, body_get, get_passed and id_match,
+        "GET",
+        f"/api/v1/memories/{mb_id}",
+        None,
+        resp.status_code,
+        body_get,
+        get_passed and id_match,
         notes=[
             f"id={body_get.get('id')}, name={body_get.get('name')}, "
             f"threshold={body_get.get('threshold')}, kb_name={body_get.get('kb_name')}"
-            if get_passed else "GET failed"
+            if get_passed
+            else "GET failed"
         ],
     )
 
@@ -531,17 +556,20 @@ def test_memory_base_crud(client: Client, flow_id: str) -> dict | None:
     resp = client.patch(f"/api/v1/memories/{mb_id}", body=patch_payload)
     body_patch = safe_json(resp)
     patch_passed = (
-        resp.status_code == 200
-        and isinstance(body_patch, dict)
-        and body_patch.get("threshold") == new_threshold
+        resp.status_code == 200 and isinstance(body_patch, dict) and body_patch.get("threshold") == new_threshold
     )
     record(
         f"2d – Update Memory Base (PATCH /api/v1/memories/{mb_id})",
-        "PATCH", f"/api/v1/memories/{mb_id}",
-        patch_payload, resp.status_code, body_patch, patch_passed,
+        "PATCH",
+        f"/api/v1/memories/{mb_id}",
+        patch_payload,
+        resp.status_code,
+        body_patch,
+        patch_passed,
         notes=[
             f"threshold updated: {body_get.get('threshold')} → {body_patch.get('threshold')}"
-            if patch_passed else f"PATCH failed or threshold mismatch: {body_patch}"
+            if patch_passed
+            else f"PATCH failed or threshold mismatch: {body_patch}"
         ],
     )
 
@@ -554,11 +582,13 @@ def test_memory_base_crud(client: Client, flow_id: str) -> dict | None:
     sess_passed = resp.status_code == 200 and isinstance(body_sess, list)
     record(
         f"2e – List Sessions (GET /api/v1/memories/{mb_id}/sessions)",
-        "GET", f"/api/v1/memories/{mb_id}/sessions",
-        None, resp.status_code, body_sess, sess_passed,
-        notes=[
-            f"Sessions tracked: {len(body_sess)}" if sess_passed else f"Sessions endpoint failed: {body_sess}"
-        ],
+        "GET",
+        f"/api/v1/memories/{mb_id}/sessions",
+        None,
+        resp.status_code,
+        body_sess,
+        sess_passed,
+        notes=[f"Sessions tracked: {len(body_sess)}" if sess_passed else f"Sessions endpoint failed: {body_sess}"],
     )
 
     # 2f: Error – 404 on unknown ID
@@ -568,8 +598,12 @@ def test_memory_base_crud(client: Client, flow_id: str) -> dict | None:
     resp_404_passed = resp.status_code == 404
     record(
         "2f – 404 on unknown ID (GET /api/v1/memories/{unknown})",
-        "GET", f"/api/v1/memories/{fake_id}",
-        None, resp.status_code, body_404, resp_404_passed,
+        "GET",
+        f"/api/v1/memories/{fake_id}",
+        None,
+        resp.status_code,
+        body_404,
+        resp_404_passed,
         notes=["Correctly returns 404" if resp_404_passed else f"Expected 404, got {resp.status_code}"],
     )
 
@@ -580,32 +614,36 @@ def test_memory_base_crud(client: Client, flow_id: str) -> dict | None:
     dup_passed = resp.status_code == 409
     record(
         "2g – 409 Duplicate Name (POST /api/v1/memories same name)",
-        "POST", "/api/v1/memories",
+        "POST",
+        "/api/v1/memories",
         {**dup_payload, "_intent": "duplicate name"},
-        resp.status_code, body_409, dup_passed,
-        notes=[
-            "Correctly returns 409 Conflict" if dup_passed
-            else f"Expected 409, got {resp.status_code}: {body_409}"
-        ],
+        resp.status_code,
+        body_409,
+        dup_passed,
+        notes=["Correctly returns 409 Conflict" if dup_passed else f"Expected 409, got {resp.status_code}: {body_409}"],
     )
 
     # 2h: Error – 422 preprocessing=True without preproc_model
     bad_payload = {
         **create_payload,
-        "name":        f"e2e-bad-{uuid.uuid4().hex[:6]}",
-        "preprocessing":  True,
-        "preproc_model":  None,
+        "name": f"e2e-bad-{uuid.uuid4().hex[:6]}",
+        "preprocessing": True,
+        "preproc_model": None,
     }
     resp = client.post("/api/v1/memories", body=bad_payload)
     body_422 = safe_json(resp)
     preproc_passed = resp.status_code == 422
     record(
         "2h – 422 preprocessing=True without preproc_model",
-        "POST", "/api/v1/memories",
+        "POST",
+        "/api/v1/memories",
         bad_payload,
-        resp.status_code, body_422, preproc_passed,
+        resp.status_code,
+        body_422,
+        preproc_passed,
         notes=[
-            "Correctly returns 422 Unprocessable" if preproc_passed
+            "Correctly returns 422 Unprocessable"
+            if preproc_passed
             else f"Expected 422, got {resp.status_code}: {body_422}"
         ],
     )
@@ -626,12 +664,13 @@ def test_mismatch(client: Client, mb_id: str) -> None:
     passed = resp.status_code == 200 and isinstance(body, dict) and "mismatch_detected" in body
     record(
         f"3 – Mismatch check (GET /api/v1/memories/{mb_id}/mismatch)",
-        "GET", f"/api/v1/memories/{mb_id}/mismatch",
-        None, resp.status_code, body, passed,
-        notes=[
-            f"mismatch_detected={body.get('mismatch_detected')}" if passed
-            else f"Mismatch endpoint failed: {body}"
-        ],
+        "GET",
+        f"/api/v1/memories/{mb_id}/mismatch",
+        None,
+        resp.status_code,
+        body,
+        passed,
+        notes=[f"mismatch_detected={body.get('mismatch_detected')}" if passed else f"Mismatch endpoint failed: {body}"],
     )
 
 
@@ -659,14 +698,16 @@ def test_manual_flush(client: Client, mb_id: str, kb_name: str, flow_id: str) ->
     job_id: str | None = body.get("job_id") if isinstance(body, dict) else None
     record(
         f"4a – Manual Flush (POST /api/v1/memories/{mb_id}/flush)",
-        "POST", f"/api/v1/memories/{mb_id}/flush",
-        flush_payload, resp.status_code, body, flush_passed,
+        "POST",
+        f"/api/v1/memories/{mb_id}/flush",
+        flush_payload,
+        resp.status_code,
+        body,
+        flush_passed,
         notes=[
-            f"job_id={job_id}" if flush_passed
-            else (
-                "409 Conflict: ingestion already running" if resp.status_code == 409
-                else f"Flush failed: {body}"
-            )
+            f"job_id={job_id}"
+            if flush_passed
+            else ("409 Conflict: ingestion already running" if resp.status_code == 409 else f"Flush failed: {body}")
         ],
     )
     if not flush_passed:
@@ -679,12 +720,20 @@ def test_manual_flush(client: Client, mb_id: str, kb_name: str, flow_id: str) ->
     dup_passed = resp_dup.status_code in (409, 202)  # 409 if job still running, 202 if already completed
     record(
         f"4b – Duplicate flush guard (POST /api/v1/memories/{mb_id}/flush again)",
-        "POST", f"/api/v1/memories/{mb_id}/flush",
-        flush_payload, resp_dup.status_code, body_dup, dup_passed,
+        "POST",
+        f"/api/v1/memories/{mb_id}/flush",
+        flush_payload,
+        resp_dup.status_code,
+        body_dup,
+        dup_passed,
         notes=[
-            "409 Conflict – correctly blocked duplicate" if resp_dup.status_code == 409
-            else ("202 – first job completed very quickly" if resp_dup.status_code == 202
-                  else f"Unexpected: HTTP {resp_dup.status_code}")
+            "409 Conflict – correctly blocked duplicate"
+            if resp_dup.status_code == 409
+            else (
+                "202 – first job completed very quickly"
+                if resp_dup.status_code == 202
+                else f"Unexpected: HTTP {resp_dup.status_code}"
+            )
         ],
     )
 
@@ -694,7 +743,8 @@ def test_manual_flush(client: Client, mb_id: str, kb_name: str, flow_id: str) ->
     sess_found = sess_data is not None
     record(
         f"4c – Session appears after flush (GET /api/v1/memories/{mb_id}/sessions)",
-        "GET", f"/api/v1/memories/{mb_id}/sessions",
+        "GET",
+        f"/api/v1/memories/{mb_id}/sessions",
         None,
         200 if sess_found else 0,
         sess_data,
@@ -709,15 +759,17 @@ def test_manual_flush(client: Client, mb_id: str, kb_name: str, flow_id: str) ->
     # 4d: Note on KB last_job_id behavior for memory base jobs
     record(
         "4d – KB last_job_id NOT updated for memory base ingestion jobs (by design)",
-        "VERIFY", "",
-        None, 0,
+        "VERIFY",
+        "",
+        None,
+        0,
         {
             "explanation": "Memory base ingestion jobs use asset_id=memory_base_id. "
-                           "GET /api/v1/knowledge_bases uses asset_id=kb_metadata_uuid. "
-                           "These are different UUIDs so last_job_id will be None in KB listing. "
-                           "Session-level verification (pending_count / total_processed) is the correct check.",
+            "GET /api/v1/knowledge_bases uses asset_id=kb_metadata_uuid. "
+            "These are different UUIDs so last_job_id will be None in KB listing. "
+            "Session-level verification (pending_count / total_processed) is the correct check.",
             "job_id": job_id,
-            "mb_id":  mb_id,
+            "mb_id": mb_id,
         },
         True,  # This is the correct/expected behavior, not a bug
         notes=["Expected: KB list will not show memory base ingestion job_id. Use sessions endpoint instead."],
@@ -731,23 +783,27 @@ def test_manual_flush(client: Client, mb_id: str, kb_name: str, flow_id: str) ->
         for s in body_sess:
             if s.get("session_id") == flush_session:
                 flush_session_found = True
-                info(f"  Session {flush_session}: pending={s.get('pending_count')}, "
-                     f"processed={s.get('total_processed')}")
+                info(
+                    f"  Session {flush_session}: pending={s.get('pending_count')}, processed={s.get('total_processed')}"
+                )
     record(
         f"4e – Sessions updated after flush (GET /api/v1/memories/{mb_id}/sessions)",
-        "GET", f"/api/v1/memories/{mb_id}/sessions",
-        None, resp_sess.status_code, body_sess, flush_session_found,
-        notes=[
-            f"Session '{flush_session}' {'present' if flush_session_found else 'not present'} in sessions list"
-        ],
+        "GET",
+        f"/api/v1/memories/{mb_id}/sessions",
+        None,
+        resp_sess.status_code,
+        body_sess,
+        flush_session_found,
+        notes=[f"Session '{flush_session}' {'present' if flush_session_found else 'not present'} in sessions list"],
     )
 
     # 4f: Wait for ingestion task to COMPLETE (total_processed > 0 or cursor_id set)
-    info(f"Waiting for flush ingestion task to complete (total_processed > 0 / cursor_id set) …")
+    info("Waiting for flush ingestion task to complete (total_processed > 0 / cursor_id set) …")
     complete_data = wait_for_ingestion_complete(client, mb_id, flush_session)
     record(
-        f"4f – Ingestion task completed after flush (total_processed>0 / cursor_id set)",
-        "GET", f"/api/v1/memories/{mb_id}/sessions",
+        "4f – Ingestion task completed after flush (total_processed>0 / cursor_id set)",
+        "GET",
+        f"/api/v1/memories/{mb_id}/sessions",
         None,
         200 if complete_data else 0,
         complete_data,
@@ -772,17 +828,20 @@ def test_threshold_via_build(client: Client, flow_id: str, mb_id: str, kb_name: 
 
     build_session = f"build-thr-{uuid.uuid4().hex[:8]}"
 
-    info(f"Running flow {THRESHOLD + 1} times on session={build_session} "
-         f"(threshold={THRESHOLD}, auto_capture=True)…")
+    info(f"Running flow {THRESHOLD + 1} times on session={build_session} (threshold={THRESHOLD}, auto_capture=True)…")
 
     for i in range(THRESHOLD + 1):
         result = run_build_flow(client, flow_id, build_session, message=f"build-threshold-msg-{i}")
-        info(f"  Run {i+1}: HTTP {result['status']} → job_id={result['body'].get('job_id', 'N/A') if isinstance(result['body'], dict) else 'N/A'}")
+        info(
+            f"  Run {i + 1}: HTTP {result['status']} → job_id={result['body'].get('job_id', 'N/A') if isinstance(result['body'], dict) else 'N/A'}"
+        )
         record(
-            f"5.run{i+1} – Build flow run {i+1}/{THRESHOLD+1} (POST /api/v1/build/{flow_id}/flow)",
-            "POST", f"/api/v1/build/{flow_id}/flow",
+            f"5.run{i + 1} – Build flow run {i + 1}/{THRESHOLD + 1} (POST /api/v1/build/{flow_id}/flow)",
+            "POST",
+            f"/api/v1/build/{flow_id}/flow",
             {"session_id": build_session, "message": f"build-threshold-msg-{i}"},
-            result["status"], result["body"],
+            result["status"],
+            result["body"],
             result["status"] in (200, 202),
         )
         time.sleep(1.0)
@@ -803,14 +862,17 @@ def test_threshold_via_build(client: Client, flow_id: str, mb_id: str, kb_name: 
     sessions_passed = thr_session_data is not None
     record(
         f"5a – Sessions show build session (GET /api/v1/memories/{mb_id}/sessions)",
-        "GET", f"/api/v1/memories/{mb_id}/sessions",
-        None, resp_sess.status_code, body_sess, sessions_passed,
+        "GET",
+        f"/api/v1/memories/{mb_id}/sessions",
+        None,
+        resp_sess.status_code,
+        body_sess,
+        sessions_passed,
         notes=[
             f"session={build_session}: pending={thr_session_data.get('pending_count')}, "
             f"processed={thr_session_data.get('total_processed')}"
             if sessions_passed
-            else f"Session '{build_session}' not found in sessions list – "
-                 "on_flow_output may not have fired yet"
+            else f"Session '{build_session}' not found in sessions list – on_flow_output may not have fired yet"
         ],
     )
 
@@ -822,10 +884,12 @@ def test_threshold_via_build(client: Client, flow_id: str, mb_id: str, kb_name: 
     body_msgs = safe_json(resp_msgs)
     msgs_count = len(body_msgs) if isinstance(body_msgs, list) else 0
     record(
-        f"5b – Monitor messages for build session (GET /api/v1/monitor/messages)",
-        "GET", "/api/v1/monitor/messages",
+        "5b – Monitor messages for build session (GET /api/v1/monitor/messages)",
+        "GET",
+        "/api/v1/monitor/messages",
         {"session_id": build_session},
-        resp_msgs.status_code, {"total_messages": msgs_count},
+        resp_msgs.status_code,
+        {"total_messages": msgs_count},
         resp_msgs.status_code == 200 and msgs_count >= THRESHOLD,
         notes=[
             f"Total messages: {msgs_count} (threshold: {THRESHOLD}). "
@@ -834,12 +898,13 @@ def test_threshold_via_build(client: Client, flow_id: str, mb_id: str, kb_name: 
     )
 
     # Check sessions for auto-triggered ingestion
-    info(f"Polling sessions for build session to confirm auto-triggered job …")
+    info("Polling sessions for build session to confirm auto-triggered job …")
     sess_data = wait_for_session_ingestion(client, mb_id, build_session)
     ingestion_triggered = sess_data is not None
     record(
         "5c – Session tracked after threshold trigger via build (sessions endpoint)",
-        "GET", f"/api/v1/memories/{mb_id}/sessions",
+        "GET",
+        f"/api/v1/memories/{mb_id}/sessions",
         None,
         200 if ingestion_triggered else 0,
         sess_data,
@@ -855,7 +920,8 @@ def test_threshold_via_build(client: Client, flow_id: str, mb_id: str, kb_name: 
     kb_info = get_kb_info(client, kb_name)
     record(
         f"5d – KB status after threshold trigger (GET /api/v1/knowledge_bases/{kb_name})",
-        "GET", f"/api/v1/knowledge_bases/{kb_name}",
+        "GET",
+        f"/api/v1/knowledge_bases/{kb_name}",
         None,
         200 if kb_info else 404,
         kb_info,
@@ -868,7 +934,8 @@ def test_threshold_via_build(client: Client, flow_id: str, mb_id: str, kb_name: 
     complete_data = wait_for_ingestion_complete(client, mb_id, build_session)
     record(
         "5e – Ingestion task completed after build threshold trigger",
-        "GET", f"/api/v1/memories/{mb_id}/sessions",
+        "GET",
+        f"/api/v1/memories/{mb_id}/sessions",
         None,
         200 if complete_data else 0,
         complete_data,
@@ -893,8 +960,12 @@ def test_threshold_via_run(client: Client, flow_id: str, mb_id: str, kb_name: st
         info("No API key available – skipping run endpoint test")
         record(
             "6 – Skipped (no API key)",
-            "POST", f"/api/v1/run/{flow_id}",
-            None, 0, "skipped", False,
+            "POST",
+            f"/api/v1/run/{flow_id}",
+            None,
+            0,
+            "skipped",
+            False,
             notes=["API key creation failed in Section 0c – test skipped"],
         )
         return
@@ -904,12 +975,14 @@ def test_threshold_via_run(client: Client, flow_id: str, mb_id: str, kb_name: st
 
     for i in range(THRESHOLD + 1):
         result = run_simplified_run_flow(client, flow_id, run_session, message=f"run-threshold-msg-{i}")
-        info(f"  Run {i+1}: HTTP {result['status']}")
+        info(f"  Run {i + 1}: HTTP {result['status']}")
         record(
-            f"6.run{i+1} – Run flow {i+1}/{THRESHOLD+1} (POST /api/v1/run/{flow_id})",
-            "POST", f"/api/v1/run/{flow_id}",
+            f"6.run{i + 1} – Run flow {i + 1}/{THRESHOLD + 1} (POST /api/v1/run/{flow_id})",
+            "POST",
+            f"/api/v1/run/{flow_id}",
             {"session_id": run_session, "message": f"run-threshold-msg-{i}"},
-            result["status"], result["body"],
+            result["status"],
+            result["body"],
             result["status"] == 200,
         )
         time.sleep(1.0)
@@ -929,8 +1002,11 @@ def test_threshold_via_run(client: Client, flow_id: str, mb_id: str, kb_name: st
 
     record(
         f"6a – Sessions show run session (GET /api/v1/memories/{mb_id}/sessions)",
-        "GET", f"/api/v1/memories/{mb_id}/sessions",
-        None, resp_sess.status_code, body_sess,
+        "GET",
+        f"/api/v1/memories/{mb_id}/sessions",
+        None,
+        resp_sess.status_code,
+        body_sess,
         run_sess_data is not None,
         notes=[
             f"session={run_session}: pending={run_sess_data.get('pending_count')}, "
@@ -948,21 +1024,24 @@ def test_threshold_via_run(client: Client, flow_id: str, mb_id: str, kb_name: st
     body_msgs = safe_json(resp_msgs)
     msgs_count_run = len(body_msgs) if isinstance(body_msgs, list) else 0
     record(
-        f"6b – Monitor messages for run session",
-        "GET", "/api/v1/monitor/messages",
+        "6b – Monitor messages for run session",
+        "GET",
+        "/api/v1/monitor/messages",
         {"session_id": run_session},
-        resp_msgs.status_code, {"total_messages": msgs_count_run},
+        resp_msgs.status_code,
+        {"total_messages": msgs_count_run},
         resp_msgs.status_code == 200 and msgs_count_run >= THRESHOLD,
         notes=[f"Total messages: {msgs_count_run} (threshold: {THRESHOLD})."],
     )
 
     # Check sessions for auto-triggered ingestion
-    info(f"Polling sessions for run session to confirm auto-triggered job …")
+    info("Polling sessions for run session to confirm auto-triggered job …")
     sess_data_run = wait_for_session_ingestion(client, mb_id, run_session)
     ingestion_triggered_run = sess_data_run is not None
     record(
         "6c – Session tracked after threshold trigger via /run (sessions endpoint)",
-        "GET", f"/api/v1/memories/{mb_id}/sessions",
+        "GET",
+        f"/api/v1/memories/{mb_id}/sessions",
         None,
         200 if ingestion_triggered_run else 0,
         sess_data_run,
@@ -978,12 +1057,15 @@ def test_threshold_via_run(client: Client, flow_id: str, mb_id: str, kb_name: st
     kb_info_run = get_kb_info(client, kb_name)
     record(
         f"6d – KB status after threshold trigger via /run (GET /api/v1/knowledge_bases/{kb_name})",
-        "GET", f"/api/v1/knowledge_bases/{kb_name}",
+        "GET",
+        f"/api/v1/knowledge_bases/{kb_name}",
         None,
         200 if kb_info_run else 404,
         kb_info_run,
         kb_info_run is not None,
-        notes=[f"status={kb_info_run.get('status')}, chunks={kb_info_run.get('chunks')}" if kb_info_run else "KB not found"],
+        notes=[
+            f"status={kb_info_run.get('status')}, chunks={kb_info_run.get('chunks')}" if kb_info_run else "KB not found"
+        ],
     )
 
     # 6e: Wait for task completion
@@ -991,7 +1073,8 @@ def test_threshold_via_run(client: Client, flow_id: str, mb_id: str, kb_name: st
     complete_data_run = wait_for_ingestion_complete(client, mb_id, run_session)
     record(
         "6e – Ingestion task completed after /run threshold trigger",
-        "GET", f"/api/v1/memories/{mb_id}/sessions",
+        "GET",
+        f"/api/v1/memories/{mb_id}/sessions",
         None,
         200 if complete_data_run else 0,
         complete_data_run,
@@ -1016,8 +1099,12 @@ def test_threshold_via_workflow_v2(client: Client, flow_id: str, mb_id: str, kb_
         info("No API key available – skipping V2 workflow test")
         record(
             "7 – Skipped (no API key)",
-            "POST", "/api/v2/workflows",
-            None, 0, "skipped", False,
+            "POST",
+            "/api/v2/workflows",
+            None,
+            0,
+            "skipped",
+            False,
             notes=["API key creation failed in Section 0c – test skipped"],
         )
         return
@@ -1027,12 +1114,14 @@ def test_threshold_via_workflow_v2(client: Client, flow_id: str, mb_id: str, kb_
 
     for i in range(THRESHOLD + 1):
         result = run_workflow_v2(client, flow_id, wf_session, message=f"wf-threshold-msg-{i}")
-        info(f"  Run {i+1}: HTTP {result['status']}")
+        info(f"  Run {i + 1}: HTTP {result['status']}")
         record(
-            f"7.run{i+1} – Workflow run {i+1}/{THRESHOLD+1} (POST /api/v2/workflows)",
-            "POST", "/api/v2/workflows",
+            f"7.run{i + 1} – Workflow run {i + 1}/{THRESHOLD + 1} (POST /api/v2/workflows)",
+            "POST",
+            "/api/v2/workflows",
             {"flow_id": flow_id, "session": wf_session},
-            result["status"], result["body"],
+            result["status"],
+            result["body"],
             result["status"] in (200, 202),
         )
         time.sleep(1.0)
@@ -1052,8 +1141,11 @@ def test_threshold_via_workflow_v2(client: Client, flow_id: str, mb_id: str, kb_
 
     record(
         f"7a – Sessions show workflow session (GET /api/v1/memories/{mb_id}/sessions)",
-        "GET", f"/api/v1/memories/{mb_id}/sessions",
-        None, resp_sess.status_code, body_sess,
+        "GET",
+        f"/api/v1/memories/{mb_id}/sessions",
+        None,
+        resp_sess.status_code,
+        body_sess,
         wf_sess_data is not None,
         notes=[
             f"session={wf_session}: pending={wf_sess_data.get('pending_count')}, "
@@ -1072,20 +1164,23 @@ def test_threshold_via_workflow_v2(client: Client, flow_id: str, mb_id: str, kb_
     msgs_count_wf = len(body_msgs) if isinstance(body_msgs, list) else 0
     record(
         "7b – Monitor messages for workflow session",
-        "GET", "/api/v1/monitor/messages",
+        "GET",
+        "/api/v1/monitor/messages",
         {"session_id": wf_session},
-        resp_msgs.status_code, {"total_messages": msgs_count_wf},
+        resp_msgs.status_code,
+        {"total_messages": msgs_count_wf},
         resp_msgs.status_code == 200 and msgs_count_wf >= THRESHOLD,
         notes=[f"Total messages: {msgs_count_wf} (threshold: {THRESHOLD})."],
     )
 
     # Check sessions for auto-triggered ingestion
-    info(f"Polling sessions for workflow session to confirm auto-triggered job …")
+    info("Polling sessions for workflow session to confirm auto-triggered job …")
     sess_data_wf = wait_for_session_ingestion(client, mb_id, wf_session)
     ingestion_triggered_wf = sess_data_wf is not None
     record(
         "7c – Session tracked after threshold trigger via /api/v2/workflows (sessions endpoint)",
-        "GET", f"/api/v1/memories/{mb_id}/sessions",
+        "GET",
+        f"/api/v1/memories/{mb_id}/sessions",
         None,
         200 if ingestion_triggered_wf else 0,
         sess_data_wf,
@@ -1101,12 +1196,15 @@ def test_threshold_via_workflow_v2(client: Client, flow_id: str, mb_id: str, kb_
     kb_info_wf = get_kb_info(client, kb_name)
     record(
         f"7d – KB status after threshold trigger via workflows (GET /api/v1/knowledge_bases/{kb_name})",
-        "GET", f"/api/v1/knowledge_bases/{kb_name}",
+        "GET",
+        f"/api/v1/knowledge_bases/{kb_name}",
         None,
         200 if kb_info_wf else 404,
         kb_info_wf,
         kb_info_wf is not None,
-        notes=[f"status={kb_info_wf.get('status')}, chunks={kb_info_wf.get('chunks')}" if kb_info_wf else "KB not found"],
+        notes=[
+            f"status={kb_info_wf.get('status')}, chunks={kb_info_wf.get('chunks')}" if kb_info_wf else "KB not found"
+        ],
     )
 
     # 7e: Wait for task completion
@@ -1114,7 +1212,8 @@ def test_threshold_via_workflow_v2(client: Client, flow_id: str, mb_id: str, kb_
     complete_data_wf = wait_for_ingestion_complete(client, mb_id, wf_session)
     record(
         "7e – Ingestion task completed after /api/v2/workflows threshold trigger",
-        "GET", f"/api/v1/memories/{mb_id}/sessions",
+        "GET",
+        f"/api/v1/memories/{mb_id}/sessions",
         None,
         200 if complete_data_wf else 0,
         complete_data_wf,
@@ -1140,12 +1239,13 @@ def test_regenerate(client: Client, mb_id: str) -> None:
     passed = resp.status_code == 202 and isinstance(body, dict) and "job_ids" in body
     record(
         f"8 – Regenerate (POST /api/v1/memories/{mb_id}/regenerate)",
-        "POST", f"/api/v1/memories/{mb_id}/regenerate",
-        None, resp.status_code, body, passed,
-        notes=[
-            f"job_ids={body.get('job_ids')}" if passed
-            else f"Regenerate response: {body}"
-        ],
+        "POST",
+        f"/api/v1/memories/{mb_id}/regenerate",
+        None,
+        resp.status_code,
+        body,
+        passed,
+        notes=[f"job_ids={body.get('job_ids')}" if passed else f"Regenerate response: {body}"],
     )
 
 
@@ -1162,8 +1262,12 @@ def test_delete(client: Client, mb_id: str) -> None:
     body = safe_json(resp) if resp.content else None
     record(
         f"9a – Delete Memory Base (DELETE /api/v1/memories/{mb_id})",
-        "DELETE", f"/api/v1/memories/{mb_id}",
-        None, resp.status_code, body, passed,
+        "DELETE",
+        f"/api/v1/memories/{mb_id}",
+        None,
+        resp.status_code,
+        body,
+        passed,
         notes=["204 No Content – deleted successfully" if passed else f"Delete failed: HTTP {resp.status_code}"],
     )
 
@@ -1172,8 +1276,12 @@ def test_delete(client: Client, mb_id: str) -> None:
     post_delete_passed = resp2.status_code == 404
     record(
         f"9b – 404 after deletion (GET /api/v1/memories/{mb_id})",
-        "GET", f"/api/v1/memories/{mb_id}",
-        None, resp2.status_code, safe_json(resp2), post_delete_passed,
+        "GET",
+        f"/api/v1/memories/{mb_id}",
+        None,
+        resp2.status_code,
+        safe_json(resp2),
+        post_delete_passed,
         notes=["Correctly returns 404 after deletion" if post_delete_passed else f"Got {resp2.status_code}"],
     )
 
@@ -1188,7 +1296,7 @@ def build_markdown_report() -> str:
 
     lines.append("# Memory Bases E2E Integration Test Report")
     lines.append("")
-    lines.append(f"**Run date:** 2026-03-26")
+    lines.append("**Run date:** 2026-03-26")
     lines.append(f"**Server:** {BASE_URL}")
     lines.append(f"**Target flow ID:** `{TARGET_FLOW_ID}`")
     lines.append(f"**Threshold used:** {THRESHOLD}")
@@ -1196,7 +1304,7 @@ def build_markdown_report() -> str:
 
     # Summary table
     passed = sum(1 for r in results if r.passed)
-    total  = len(results)
+    total = len(results)
     lines.append("## Summary")
     lines.append("")
     lines.append(f"**Passed:** {passed}/{total}")
@@ -1204,8 +1312,8 @@ def build_markdown_report() -> str:
     lines.append("| # | Test | Method | Path | HTTP | Result |")
     lines.append("|---|------|--------|------|------|--------|")
     for i, r in enumerate(results, 1):
-        mark   = "✅" if r.passed else "❌"
-        path   = r.path[:60] + "…" if len(r.path) > 60 else r.path
+        mark = "✅" if r.passed else "❌"
+        path = r.path[:60] + "…" if len(r.path) > 60 else r.path
         lines.append(f"| {i} | {r.label} | `{r.method}` | `{path}` | {r.resp_status} | {mark} |")
     lines.append("")
 
@@ -1256,7 +1364,9 @@ def build_markdown_report() -> str:
     lines.append("")
     lines.append("### Hook Wiring Status")
     lines.append("- `on_flow_output()` in `MemoryBaseService` is **wired up** in:")
-    lines.append("  - `src/backend/base/langflow/api/build.py` (build/{flow_id}/flow path) via `background_tasks.add_task`")
+    lines.append(
+        "  - `src/backend/base/langflow/api/build.py` (build/{flow_id}/flow path) via `background_tasks.add_task`"
+    )
     lines.append("  - `src/backend/base/langflow/api/v1/endpoints.py` (run/{flow_id} path) via `fire_and_forget_task`")
     lines.append("  - `src/backend/base/langflow/api/v2/workflow.py` (workflows path) via `fire_and_forget_task`")
     lines.append("")
@@ -1304,7 +1414,7 @@ def main() -> None:
             print(f"[ERROR] Server not healthy: {ping.status_code}")
             _save_empty_report(f"Server not healthy: {ping.status_code}")
             return
-        print(f"[OK] Server reachable")
+        print("[OK] Server reachable")
     except requests.ConnectionError as e:
         print(f"[ERROR] Cannot connect to {BASE_URL}: {e}")
         _save_empty_report(f"Cannot connect to server: {e}")
@@ -1336,7 +1446,7 @@ def main() -> None:
         _save_report()
         return
 
-    mb_id   = mb["id"]
+    mb_id = mb["id"]
     kb_name = mb["kb_name"]
 
     # Section 3: Mismatch
@@ -1366,7 +1476,7 @@ def main() -> None:
 
 def _save_report() -> None:
     report = build_markdown_report()
-    path   = "/Users/debojitkaushik/Desktop/memory_bases_results.md"
+    path = "/Users/debojitkaushik/Desktop/memory_bases_results.md"
     with open(path, "w") as f:
         f.write(report)
     print(f"\n[REPORT] Results saved to {path}")
