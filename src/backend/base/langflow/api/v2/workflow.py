@@ -496,6 +496,7 @@ async def execute_workflow_background(
             result = await run_graph_internal(**kwargs)
             _, _effective_session_id = result
             try:
+                print("Checking memory base hook conditions for flow %s", _hook_flow_id)
                 await get_task_service().fire_and_forget_task(
                     get_memory_base_service().on_flow_output,
                     flow_id=_hook_flow_id,

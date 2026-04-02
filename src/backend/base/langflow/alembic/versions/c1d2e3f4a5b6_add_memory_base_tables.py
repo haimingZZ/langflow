@@ -1,14 +1,18 @@
 """add_memory_base_tables
 
-Adds:
+Creates:
   - memory_base table
   - memory_base_session table (FK inline on column, matching SQLModel output)
+
+Adds to message table:
   - message.run_id  (nullable UUID, indexed)
   - message.is_output (bool, default False)
 
-Revision ID: f6e5d4c3b2a1
-Revises: e1f2a3b4c5d6
-Create Date: 2026-03-23 00:01:00.000000
+Merges heads: 36aa87831162, 8255e9fc18d9
+
+Revision ID: c1d2e3f4a5b6
+Revises: 36aa87831162, 8255e9fc18d9
+Create Date: 2026-03-25 00:00:00.000000
 """
 
 from collections.abc import Sequence
@@ -18,8 +22,11 @@ from alembic import op
 from langflow.utils import migration
 
 # revision identifiers, used by Alembic.
-revision: str = "f6e5d4c3b2a1"
-down_revision: str | None = "e1f2a3b4c5d6"
+revision: str = "c1d2e3f4a5b6"
+down_revision: str | Sequence[str] | None = (
+    "36aa87831162",
+    "8255e9fc18d9",
+)
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -38,8 +45,12 @@ def upgrade() -> None:
             sa.Column("flow_id", sa.Uuid(), nullable=False),
             sa.Column("user_id", sa.Uuid(), nullable=False),
             sa.Column("threshold", sa.Integer(), nullable=False, server_default=sa.text("50")),
-            sa.Column("kb_name", sa.String(), nullable=False),
             sa.Column("auto_capture", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+            sa.Column("embedding_model", sa.String(), nullable=False, server_default=sa.text("''")),
+            sa.Column("preprocessing", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+            sa.Column("preproc_model", sa.String(), nullable=True),
+            sa.Column("preproc_instructions", sa.String(), nullable=True),
+            sa.Column("kb_name", sa.String(), nullable=False),
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
             sa.PrimaryKeyConstraint("id"),
         )
@@ -53,8 +64,7 @@ def upgrade() -> None:
         op.create_table(
             "memory_base_session",
             sa.Column("id", sa.Uuid(), nullable=False),
-            # FK defined inline on the column — matches what SQLModel generates from
-            # Field(sa_column=Column(sa.Uuid(), ForeignKey("memory_base.id", ondelete="CASCADE")))
+            # FK defined inline on the column — matches SQLModel Field(sa_column=Column(..., ForeignKey(...)))
             sa.Column(
                 "memory_base_id",
                 sa.Uuid(),

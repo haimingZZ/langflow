@@ -78,6 +78,7 @@ async def ingest_memory_task(
     Raises:
         Exception: Re-raises any failure; cursor is NOT advanced on failure.
     """
+    print("\n ---------Starting ingest_memory_task for MemoryBase %s session %s with cursor %s", memory_base_id, session_id, "(", cursor_id, ")")
     kb_root = KBStorageHelper.get_root_path()
     if not kb_root:
         msg = "Knowledge base root path is not configured"

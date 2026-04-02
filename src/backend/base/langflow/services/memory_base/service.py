@@ -411,6 +411,7 @@ class MemoryBaseService:
 
         for mb in memory_bases:
             try:
+                print('Checking for MB:', mb.name, 'with threshold', mb.threshold)
                 await self._maybe_trigger(mb=mb, session_id=session_id)
             except Exception:
                 await logger.aerror(
