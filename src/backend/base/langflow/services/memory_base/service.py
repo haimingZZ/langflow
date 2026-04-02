@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from lfx.log.logger import logger
-from sqlmodel import col, distinct, func, select
+from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from langflow.api.utils.kb_helpers import KBAnalysisHelper, KBStorageHelper
@@ -28,7 +28,6 @@ from langflow.services.database.models.memory_base.model import (
     MemoryBase,
     MemoryBaseCreate,
     MemoryBaseSession,
-    MemoryBaseSessionRead,
     MemoryBaseUpdate,
 )
 from langflow.services.database.models.message.model import MessageTable
@@ -246,71 +245,18 @@ class MemoryBaseService:
     #  Sessions                                                             #
     # ------------------------------------------------------------------ #
 
-    async def get_sessions(self, memory_base_id: uuid.UUID, user_id: uuid.UUID) -> list[MemoryBaseSessionRead]:
-        """Return all sessions with pending message counts.
-
-        Includes sessions that have messages in MessageTable for the associated
-        flow but no MemoryBaseSession record yet (i.e. never synced).
-        All messages are counted (not just is_output) to match the full
-        conversation batch ingestion approach.
-        """
+    async def verify_ownership(self, memory_base_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        """Raise ValueError if the Memory Base does not belong to user_id."""
         async with session_scope() as db:
-            # Verify ownership
-            mb = await self._get_mb_or_raise(db, memory_base_id, user_id)
+            await self._get_mb_or_raise(db, memory_base_id, user_id)
 
-            # All tracked sessions
-            stmt = select(MemoryBaseSession).where(MemoryBaseSession.memory_base_id == memory_base_id)
-            result = await db.exec(stmt)
-            tracked = list(result.all())
-            tracked_ids = {s.session_id for s in tracked}
-
-            # All sessions that have any flow messages (may include untracked ones)
-            dist_stmt = select(distinct(MessageTable.session_id)).where(
-                MessageTable.flow_id == mb.flow_id,
-            )
-            dist_result = await db.exec(dist_stmt)
-            all_session_ids: set[str] = {row for row in dist_result.all() if row}
-
-            output: list[MemoryBaseSessionRead] = []
-
-            # Tracked sessions — compute pending count from cursor
-            for s in tracked:
-                pending = await self._count_pending(db, mb, s)
-                output.append(
-                    MemoryBaseSessionRead(
-                        id=s.id,
-                        memory_base_id=s.memory_base_id,
-                        session_id=s.session_id,
-                        cursor_id=s.cursor_id,
-                        total_processed=s.total_processed,
-                        last_sync_at=s.last_sync_at,
-                        pending_count=pending,
-                    )
-                )
-
-            # Untracked sessions — all their messages are pending
-            for sid in sorted(all_session_ids - tracked_ids):
-                count_stmt = (
-                    select(func.count())
-                    .select_from(MessageTable)
-                    .where(MessageTable.flow_id == mb.flow_id)
-                    .where(MessageTable.session_id == sid)
-                )
-                count_result = await db.exec(count_stmt)
-                pending = count_result.one()
-                output.append(
-                    MemoryBaseSessionRead(
-                        id=uuid.uuid4(),  # Synthetic — no DB row yet
-                        memory_base_id=memory_base_id,
-                        session_id=sid,
-                        cursor_id=None,
-                        total_processed=0,
-                        last_sync_at=None,
-                        pending_count=pending,
-                    )
-                )
-
-            return output
+    def sessions_stmt(self, memory_base_id: uuid.UUID):  # type: ignore[return]
+        """Return the select statement for persisted sessions, for use with apaginate."""
+        return (
+            select(MemoryBaseSession)
+            .where(MemoryBaseSession.memory_base_id == memory_base_id)
+            .order_by(col(MemoryBaseSession.last_sync_at).desc())
+        )
 
     # ------------------------------------------------------------------ #
     #  Ingestion                                                            #
@@ -411,7 +357,13 @@ class MemoryBaseService:
 
         for mb in memory_bases:
             try:
-                print('Checking for MB:', mb.name, 'with threshold', mb.threshold)
+                await logger.adebug(
+                    "Auto-capture check | memory_base=%s name=%r threshold=%s session=%s",
+                    mb.id,
+                    mb.name,
+                    mb.threshold,
+                    session_id,
+                )
                 await self._maybe_trigger(mb=mb, session_id=session_id)
             except Exception:
                 await logger.aerror(

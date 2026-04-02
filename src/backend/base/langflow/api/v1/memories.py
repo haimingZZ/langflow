@@ -20,6 +20,7 @@ Edge cases enforced:
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from http import HTTPStatus
 from typing import Annotated
 
@@ -27,14 +28,17 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlmodel import apaginate
 from pydantic import BaseModel
+from sqlmodel import col, select
 
 from langflow.api.utils import CurrentActiveUser
 from langflow.services.database.models.memory_base.model import (
+    MemoryBase,
     MemoryBaseCreate,
     MemoryBaseRead,
     MemoryBaseSessionRead,
     MemoryBaseUpdate,
 )
+from langflow.services.database.models.message.model import MessageTable
 from langflow.services.deps import session_scope
 from langflow.services.jobs import DuplicateJobError
 from langflow.services.memory_base.service import MemoryBaseService
@@ -48,6 +52,21 @@ _service = MemoryBaseService()
 # ------------------------------------------------------------------ #
 #  Request / Response schemas                                           #
 # ------------------------------------------------------------------ #
+
+
+class MessageReadResponse(BaseModel):
+    """Slim message projection for Memory Base session message listings."""
+
+    model_config = {"from_attributes": True}
+
+    timestamp: datetime | None = None
+    sender: str
+    sender_name: str
+    ingestion_job_id: uuid.UUID | None = None
+    ingestion_timestamp: datetime | None = None
+    session_id: str
+    text: str
+    content_blocks: list = []
 
 
 class FlushRequest(BaseModel):
@@ -122,21 +141,68 @@ async def get_memory_base(
 async def list_sessions(
     memory_base_id: uuid.UUID,
     current_user: CurrentActiveUser,
-) -> list[MemoryBaseSessionRead]:
-    """List all sessions tracked by this Memory Base.
+    params: Annotated[Params, Depends()],
+) -> Page[MemoryBaseSessionRead]:
+    """List persisted sessions for this Memory Base (paginated).
 
-    Auth: ownership is verified via current_user.id — only sessions belonging
-    to this user's Memory Base are returned.
-
-    Includes both:
-    - Sessions already tracked in MemoryBaseSession (synced/triggered).
-    - Sessions that have flow output messages but have never been synced yet
-      (pending_count > 0, total_processed == 0, cursor_id == None).
+    Only sessions that have been synced at least once (i.e. have a
+    MemoryBaseSession row) are returned.  Results are ordered by
+    last_sync_at descending.
     """
     try:
-        return await _service.get_sessions(memory_base_id, user_id=current_user.id)
+        await _service.verify_ownership(memory_base_id, user_id=current_user.id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    async with session_scope() as db:
+        stmt = _service.sessions_stmt(memory_base_id)
+        return await apaginate(
+            db,
+            stmt,
+            params=params,
+            transformer=lambda items: [MemoryBaseSessionRead.model_validate(s) for s in items],
+        )
+
+
+@router.get("/{memory_base_id}/sessions/{session_id}/messages", status_code=HTTPStatus.OK)
+async def list_session_messages(
+    memory_base_id: uuid.UUID,
+    session_id: str,
+    current_user: CurrentActiveUser,
+    params: Annotated[Params, Depends()],
+) -> Page[MessageReadResponse]:
+    """List all messages for a specific Memory Base session (paginated).
+
+    Messages are ordered by timestamp ascending.
+    Each message includes ``ingestion_job_id`` and ``ingestion_timestamp``
+    so the frontend can group by job and determine ingestion status.
+
+    Returns 404 if the Memory Base does not belong to the current user.
+    """
+    async with session_scope() as db:
+        mb_stmt = (
+            select(MemoryBase)
+            .where(MemoryBase.id == memory_base_id)
+            .where(MemoryBase.user_id == current_user.id)
+        )
+        result = await db.exec(mb_stmt)
+        mb = result.first()
+        if mb is None:
+            raise HTTPException(status_code=404, detail="Memory base not found")
+
+        msg_stmt = (
+            select(MessageTable)
+            .where(MessageTable.flow_id == mb.flow_id)
+            .where(MessageTable.session_id == session_id)
+            .order_by(col(MessageTable.timestamp).asc())
+        )
+        return await apaginate(
+            db,
+            msg_stmt,
+            params=params,
+            transformer=lambda items: [
+                MessageReadResponse.model_validate(m, from_attributes=True) for m in items
+            ],
+        )
 
 
 @router.patch("/{memory_base_id}", status_code=HTTPStatus.OK)
@@ -202,6 +268,7 @@ async def flush_memory_base(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return {"job_id": job_id}
+
 
 
 # ------------------------------------------------------------------ #

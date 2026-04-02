@@ -22,6 +22,7 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from lfx.log.logger import logger
+from sqlalchemy import update
 from sqlmodel import col, select
 
 from langflow.api.utils.kb_helpers import KBAnalysisHelper, KBIngestionHelper, KBStorageHelper
@@ -78,7 +79,13 @@ async def ingest_memory_task(
     Raises:
         Exception: Re-raises any failure; cursor is NOT advanced on failure.
     """
-    print("\n ---------Starting ingest_memory_task for MemoryBase %s session %s with cursor %s", memory_base_id, session_id, "(", cursor_id, ")")
+    await logger.adebug(
+        "Ingestion job started | memory_base=%s session=%s cursor=%s job=%s",
+        memory_base_id,
+        session_id,
+        cursor_id,
+        task_job_id,
+    )
     kb_root = KBStorageHelper.get_root_path()
     if not kb_root:
         msg = "Knowledge base root path is not configured"
@@ -137,7 +144,10 @@ async def ingest_memory_task(
         # Job was cancelled mid-write; cursor must NOT advance.
         return {"message": "Job cancelled during ingestion", "ingested": 0}
 
-    # ---- 5. Update cursor atomically ONLY after confirmed success ----
+    # ---- 5. Bulk-stamp ingestion metadata on every ingested message ----
+    await _mark_messages_ingested(messages=messages, job_id=task_job_id)
+
+    # ---- 6. Update cursor atomically ONLY after confirmed success ----
     last_message_id = messages[-1].id
     ingested_count = len(messages)
     await _advance_cursor(
@@ -147,10 +157,11 @@ async def ingest_memory_task(
         ingested_count=ingested_count,
     )
 
-    await logger.ainfo(
-        "MemoryBase %s / session %s: ingested %d messages. New cursor: %s",
+    await logger.adebug(
+        "Ingestion job finished | memory_base=%s session=%s job=%s ingested=%d new_cursor=%s",
         memory_base_id,
         session_id,
+        task_job_id,
         ingested_count,
         last_message_id,
     )
@@ -186,6 +197,59 @@ async def _fetch_pending_messages(
         return list(result.all())
 
 
+async def _mark_messages_ingested(
+    *,
+    messages: list[MessageTable],
+    job_id: uuid.UUID,
+) -> None:
+    """Bulk-update all ingested messages with their job ID and ingestion timestamp.
+
+    Uses a single UPDATE ... WHERE id IN (...) statement for efficiency.
+    Called only after a confirmed successful Chroma write.
+    """
+    message_ids = [msg.id for msg in messages]
+    ingested_at = datetime.now(timezone.utc)
+    async with session_scope() as db:
+        stmt = (
+            update(MessageTable)
+            .where(col(MessageTable.id).in_(message_ids))
+            .values(ingestion_job_id=job_id, ingestion_timestamp=ingested_at)
+        )
+        await db.exec(stmt)  # type: ignore[call-overload]
+        await db.commit()
+
+
+def _extract_content_block_text(content_blocks: list) -> str:
+    """Extract embeddable text from content blocks of type text, code, and json.
+
+    Blocks of any other type (tool_use, error, media, etc.) are skipped.
+    Each extracted piece is separated by a blank line so chunk boundaries
+    remain readable in the vector store.
+    """
+    parts: list[str] = []
+    for block in content_blocks:
+        # content_blocks are stored as JSON; each block is a dict at runtime.
+        contents: list = block.get("contents", []) if isinstance(block, dict) else []
+        for entry in contents:
+            if not isinstance(entry, dict):
+                continue
+            entry_type = entry.get("type")
+            if entry_type == "text":
+                fragment = (entry.get("text") or "").strip()
+            elif entry_type == "code":
+                lang = entry.get("language") or ""
+                code = (entry.get("code") or "").strip()
+                fragment = f"```{lang}\n{code}\n```" if code else ""
+            elif entry_type == "json":
+                data = entry.get("data")
+                fragment = json.dumps(data, ensure_ascii=False) if data is not None else ""
+            else:
+                continue
+            if fragment:
+                parts.append(fragment)
+    return "\n\n".join(parts)
+
+
 def _build_documents_from_messages(
     messages: list[MessageTable],
     *,
@@ -194,8 +258,10 @@ def _build_documents_from_messages(
 ) -> list[Document]:
     """Convert MessageTable rows into LangChain Documents.
 
-    Long messages are split by RecursiveCharacterTextSplitter to keep chunk
-    sizes manageable for embedding.
+    Each message's embeddable text is the concatenation of msg.text and any
+    content-block fragments whose type is text, code, or json.  Other block
+    types (tool_use, error, media, …) are ignored.  Long combined texts are
+    split by RecursiveCharacterTextSplitter before embedding.
     """
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=_MESSAGE_CHUNK_SIZE,
@@ -203,7 +269,14 @@ def _build_documents_from_messages(
     )
     docs: list[Document] = []
     for msg in messages:
-        text = (msg.text or "").strip()
+        parts: list[str] = []
+        if msg.text and msg.text.strip():
+            parts.append(msg.text.strip())
+        cb_text = _extract_content_block_text(msg.content_blocks or [])
+        if cb_text:
+            parts.append(cb_text)
+
+        text = "\n\n".join(parts)
         if not text:
             continue
         chunks = splitter.split_text(text)

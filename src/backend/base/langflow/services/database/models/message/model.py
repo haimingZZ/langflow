@@ -149,6 +149,8 @@ class MessageTable(MessageBase, table=True):  # type: ignore[call-arg]
         default_factory=list,
         sa_column=Column(JSON),
     )
+    ingestion_job_id: UUID | None = Field(default=None, index=False)
+    ingestion_timestamp: datetime | None = Field(default=None, index=False)
 
     @field_validator("flow_id", mode="before")
     @classmethod
