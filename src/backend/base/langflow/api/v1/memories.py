@@ -179,11 +179,7 @@ async def list_session_messages(
     Returns 404 if the Memory Base does not belong to the current user.
     """
     async with session_scope() as db:
-        mb_stmt = (
-            select(MemoryBase)
-            .where(MemoryBase.id == memory_base_id)
-            .where(MemoryBase.user_id == current_user.id)
-        )
+        mb_stmt = select(MemoryBase).where(MemoryBase.id == memory_base_id).where(MemoryBase.user_id == current_user.id)
         result = await db.exec(mb_stmt)
         mb = result.first()
         if mb is None:
@@ -199,9 +195,7 @@ async def list_session_messages(
             db,
             msg_stmt,
             params=params,
-            transformer=lambda items: [
-                MessageReadResponse.model_validate(m, from_attributes=True) for m in items
-            ],
+            transformer=lambda items: [MessageReadResponse.model_validate(m, from_attributes=True) for m in items],
         )
 
 
@@ -268,7 +262,6 @@ async def flush_memory_base(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return {"job_id": job_id}
-
 
 
 # ------------------------------------------------------------------ #
