@@ -355,7 +355,7 @@ jobs:
           python-version: "3.12"
           prune-cache: false
       - name: Download LFX artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: dist-lfx
           path: ./lfx-dist
@@ -479,12 +479,12 @@ jobs:
           python-version: "3.12"
           prune-cache: false
       - name: Download LFX artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: dist-lfx
           path: ./lfx-dist
       - name: Download base artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: dist-base
           path: ./base-dist
@@ -603,7 +603,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download base artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: dist-base
           path: src/backend/base/dist
@@ -626,7 +626,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download main artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: dist-main
           path: dist
@@ -649,7 +649,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download LFX artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: dist-lfx
           path: src/lfx/dist
@@ -749,7 +749,7 @@ jobs:
       needs.build-main.result == 'success' &&
       needs.publish-main.result == 'success'
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist-main
           path: dist
